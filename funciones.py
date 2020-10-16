@@ -9,6 +9,7 @@ import pandas as pd
 import yfinance as yf
 import datetime as dt
 from sodapy import Socrata
+import holidays
 
 def get_TRM():
     client = Socrata("www.datos.gov.co", None)
@@ -30,3 +31,14 @@ def get_data(ticker, fecha_inicial, fecha_final):
                        progress=False)
     df.reset_index(level=0, inplace=True)
     return df[['Date', 'Close', 'Open', 'High', 'Low']]
+
+def ultDiaHabil():
+    f = dt.date.today() - dt.timedelta(days=1)
+    while True:
+        if f in holidays.CO() or f.weekday() == 5 or f.weekday() == 6:
+            f = dt.timedelta(days=1)
+        else:
+            break
+    return f
+
+f = ultDiaHabil()
