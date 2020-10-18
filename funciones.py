@@ -40,7 +40,7 @@ def ultDiaHabil():
     f = dt.date.today() - dt.timedelta(days=1)
     while True:
         if f in holidays.CO() or f.weekday() == 5 or f.weekday() == 6:
-            f = dt.timedelta(days=1)
+            f = f - dt.timedelta(days=1)
         else:
             break
     return f
@@ -62,4 +62,72 @@ def trm_table_yr(fecha):
     df.reset_index(level=0, inplace=True)
     df['Fecha'] = [i.year for i in df['Fecha']]
     df.columns=['Fecha', 'Mínimo', 'Máximo', 'Media', 'Std_Dev']
+    return df
+
+dict_ind = {'SMA(14)' : 14, 'SMA(50)' : 50, 'SMA(200)' : 200, 'BB' : 0}
+
+def boll_bands(df):
+    df['TP'] = (df['Close'] + df['High'] + df['Low']) / 3
+    df['Std'] = df['TP'].rolling(20).std()
+    df['BB+'] = df['TP'].rolling(20).mean() + (df['Std'] * 2)
+    df['BB-'] = df['TP'].rolling(20).mean() - (df['Std'] * 2)
+    return list(df['BB+']), list(df['BB-'])
+
+def macd(df):
+    df['ema12'] = df['Close'].ewm(span=12, adjust=False).mean()
+    df['ema26'] = df['Close'].ewm(span=26, adjust=False).mean()
+    df['macd'] = df['ema12'] - df['ema26']
+    df['signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+    return list(df['macd']), list(df['signal'])
+
+def RSI(df):
+    df['R'] = np.log(df['Close'] / df['Close'].shift(1))
+    R = list(df['R'])
+    rsi = [np.nan] * 14
+    for i in range(14, len(R)):
+        r = R[i-14:i]
+        pos = []
+        neg = []
+        for j in r:
+            if j < 0:
+                neg.append(j)
+            elif j > 0:
+                pos.append(j)
+            else:
+                pos.append(0)
+                neg.append(0)
+        rs = (sum(pos) / len(pos)) / abs((sum(neg) / len(neg)))
+        rsi.append(100 - (100 / (1 + rs)))
+    return rsi
+
+def SO(df):
+    df['H'] = df['Close'].rolling(14).max()
+    df['L'] = df['Close'].rolling(14).min()
+    df['SO'] = ((df['Close'] - df['L']) / (df['H'] - df['L'])) * 100
+    df['SOM'] = df['SO'].rolling(3).mean()
+    return list(df['SO']), list(df['SOM'])
+
+def df_stocks(nemo, fecha, fecha_inicial, ind1, ind2):
+    fecha_inicial = fecha_inicial - dt.timedelta(days=2000)
+    df = get_data(nemo, fecha_inicial, fecha)
+    if len(ind1) > 0:
+        for col in ind1:
+            if col != 'BB':
+                df[col] = df['Close'].rolling(dict_ind[col]).mean()
+            else:
+                bbu, bbd = boll_bands(df.loc[:, ['Date', 'Close', 'High', 'Low']])
+                df['BB+'] = bbu
+                df['BB-'] = bbd
+                
+    if ind2 == 'MACD':
+        m, s = macd(df.loc[:, ['Close']])
+        df['MACD'] = m
+        df['MACD_Signal'] = s
+    elif ind2 == 'RSI':
+        df['RSI'] = RSI(df)
+    elif ind2 == 'Stochastic Oscillator':
+        so, som = SO(df.loc[:, ['Close']])
+        df['Stochastic Oscillator'] = so
+        df['SO_SMA'] = som
+    
     return df

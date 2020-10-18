@@ -17,11 +17,15 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import plotly.express as px
+import warnings
+warnings.filterwarnings('ignore')
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
 suppress_callback_exceptions = True
 
-from funciones import ultDiaHabil, get_TRM, get_data, get_TRM_BoxPlot, trm_table_yr
+from funciones import ultDiaHabil, get_TRM, get_data, get_TRM_BoxPlot, trm_table_yr, df_stocks
+
+#Cartas y Tab 1 ---> TRM vs Petroleo-------------------------------------------
 
 trm_oil_1 = dbc.Card([
                 dcc.Graph(id='graf')
@@ -93,9 +97,94 @@ trm_oil = html.Div([
                 dbc.Col(trm_table, width=5)
                 ]),
         ])
+#------------------------------------------------------------------------------
 
-spy = html.Div(html.H1('Hola'))
+#Cartas y Tab 2 ---> Acciones S&P----------------------------------------------
+dict_acc = {'S&P' : '^GSPC', 'Apple' : 'AAPL', 'Microsoft' : 'MSFT',
+            'Amazon' : 'AMZN', 'Facebook' : 'FB', 'Alphabet' : 'GOOG',
+            'Berkshire Hathaway' : 'BRK-B', 'Johnson & Johnson' : 'JNJ',
+            'VISA' : 'V', 'Procter & Gamble' : 'PG'}
 
+ind_1 = dbc.Card([
+        dbc.CardBody([
+            dbc.Label('Panel Principal: '),
+            dbc.Checklist(
+                    value=['SMA(14)'],
+                    options=[
+                                {'label' : 'SMA(14)', 'value' : 'SMA(14)'},
+                                {'label' : 'SMA(50)', 'value' : 'SMA(50)'},
+                                {'label' : 'SMA(200)', 'value' : 'SMA(200)'},
+                                {'label' : 'Bollinger Bands', 'value' : 'BB'},
+                            ],
+                    id='ind-1',
+                    inline=True
+                )
+            ])
+        ])
+
+ind_2 = dbc.Card([
+        dbc.CardBody([
+            dbc.Label('Panel Secundario: '),
+            dbc.RadioItems(
+                    value='MACD',
+                    options=[
+                                {'label' : 'RSI', 'value' : 'RSI'},
+                                {'label' : 'MACD', 'value' : 'MACD'},
+                                {'label' : 'Stochastic Oscillator', 'value' : 'Stochastic Oscillator'}                                
+                            ],
+                    id='ind-2',
+                    inline=True
+                )
+            ])
+        ])
+
+spy_main = dbc.Card([
+        dbc.CardBody([
+                dbc.Label('Ventana Información: '),
+                dbc.RadioItems(
+                        value='1Y',
+                        options=[
+                                {'label' : '1M', 'value' : '1M'},
+                                {'label' : '3M', 'value' : '3M'},
+                                {'label' : '6M', 'value' : '6M'},
+                                {'label' : '1Y', 'value' : '1Y'},
+                                {'label' : '5Y', 'value' : '5Y'}
+                                ],
+                        id='freq-acc',
+                        inline=True
+                        ),
+                dbc.Row(dbc.Col(html.Div(html.Br()))),
+                dbc.Row([
+                        dbc.Col(ind_1, width=6),
+                        dbc.Col(ind_2, width=6)
+                        ]),
+                dcc.Graph(id='graf-acc'),
+                ])
+        ])
+
+spy = html.Div([
+        dbc.Row(dbc.Col(html.Div(html.Br()))),
+        dbc.Row([
+                dbc.Col(html.H4('Fecha de Corte: '), width={'size' : 'auto', 'offset' : 1}),
+                dbc.Col(dcc.DatePickerSingle(id='fecha-acc',
+                                             date = ultDiaHabil(),
+                                             min_date_allowed = dt.date(2009, 1, 1),
+                                             max_date_allowed = ultDiaHabil(),
+                                             display_format = 'D/M/Y',
+                                             persistence=False), width='auto'),
+                dbc.Col(html.H4('Acción: '), width='auto'),
+                dbc.Col(dcc.Dropdown(id='stock',
+                                     value='^GSPC',
+                                     options=[{'label' : i, 'value' : dict_acc[i]} for i in dict_acc.keys()]),
+                                             width=4)
+                ], justify='start'),
+        dbc.Row(dbc.Col(html.Div(html.Br()))),
+        dbc.Row([
+                dbc.Col(spy_main, width={'size' : 10, 'offset' : 1}),
+                ]),
+        ])
+
+#------------------------------------------------------------------------------
 layout = html.Div([
         dbc.Row([
                 dbc.Col(html.Div(html.H1("Dashboard Información Mercado")), width=10),
@@ -112,6 +201,8 @@ layout = html.Div([
         ])
 
 app.layout = layout
+
+#Callbacks Tab 1---------------------------------------------------------------
 
 #Grafica TRM y Petroleo - Grafica Correlacion
 
@@ -227,6 +318,97 @@ def trm_year_table(fecha):
         fecha = dt.datetime(int(fecha[:4]), int(fecha[5:7]), int(fecha[8:10]), 0, 0, 0)
     df = trm_table_yr(fecha)
     return df.to_dict('rows'), [{'name' : i, 'id' : i} for i in df.columns]
+#------------------------------------------------------------------------------
+
+#Callbacks Tab 2---------------------------------------------------------------
+dict_v = {'1M' : 30, '3M' : 90, '6M' : 180, '1Y' : 365, '5Y' : 365*5}
+
+@app.callback(Output('graf-acc', 'figure'),
+              [Input('fecha-acc', 'date'), Input('stock', 'value'), Input('freq-acc', 'value'),
+               Input('ind-1', 'value'), Input('ind-2', 'value')])
+
+def graf_stock(fecha, nemo, v, ind1, ind2):
+    if fecha is not None:
+        fecha = dt.datetime(int(fecha[:4]), int(fecha[5:7]), int(fecha[8:10]), 0, 0, 0)
+    fecha_inicial = fecha - dt.timedelta(days=dict_v[v])
+#    nemo = dict_acc[nemo]
+    df = df_stocks(nemo, fecha, fecha_inicial, ind1, ind2)
+    df = df[df.Date >= fecha_inicial]
+    fig = make_subplots(rows=3, cols=1, row_heights=[0.5, 0.3, 0.2], 
+                        shared_xaxes=True, vertical_spacing=0.02)
+    
+    cols = []
+    for i in ind1:
+        if i == 'BB':
+            cols.append('BB+')
+            cols.append('BB-')
+        else:
+            cols.append(i)
+    
+    #Grafica Principal
+    fig.add_trace(go.Scatter(
+            x=df['Date'],
+            y=df['Close'],
+            name=nemo
+            ), row=1, col=1)
+    
+    if len(cols) > 0:
+        for col in cols:
+            fig.add_trace(go.Scatter(
+                x=df['Date'],
+                y=df[col],
+                name=col
+            ), row=1, col=1)
+    
+    #Grafica 2
+    fig.add_trace(go.Scatter(
+            x=df['Date'],
+            y=df[ind2],
+            name=ind2
+            ), row=2, col=1)
+    
+    if ind2 == 'MACD':
+        fig.add_trace(go.Scatter(
+            x=df['Date'],
+            y=df['MACD_Signal'],
+            name='MACD_Signal'
+            ), row=2, col=1)
+    elif ind2 == 'Stochastic Oscillator':
+        fig.add_trace(go.Scatter(
+            x=df['Date'],
+            y=df['SO_SMA'],
+            name='SO_SMA'
+            ), row=2, col=1)
+    elif ind2 == 'RSI':
+        fig.add_trace(go.Scatter(
+            x=df['Date'],
+            y=[70] * df.shape[0],
+            name='Overbougth > 70 (RSI)',
+            line=(dict(color='firebrick', dash='dot'))
+            ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Date'],
+            y=[30] * df.shape[0],
+            name='Oversold < 30 (RSI)',
+            line=(dict(color='firebrick', dash='dot'))
+            ), row=2, col=1)
+    
+    #Grafica 3
+    fig.add_trace(go.Bar(
+            x=df['Date'],
+            y=df['Volume'],
+            name='Volúmen'
+            ), row=3, col=1)
+    
+    fig.update_layout(height=600)
+    
+    fig.update_yaxes(title_text=nemo, tickformat='$', row=1, col=1)
+    fig.update_yaxes(title_text=ind2, row=2, col=1)
+    fig.update_yaxes(title_text='Volúmen', tickformat='$', row=3, col=1)
+    
+    return fig
+
+#------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run_server(host='0.0.0.0',debug=True, port=8050)
